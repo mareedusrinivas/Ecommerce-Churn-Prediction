@@ -50,7 +50,7 @@ const BARS = [
   { label: 'Jul', pct: 33, muted: false },
 ];
 
-export default function HomePage({ onGetStarted }) {
+export default function HomePage({ onGetStarted, user, onLogout }) {
   return (
     <>
       {/* ── Navbar ── */}
@@ -63,9 +63,25 @@ export default function HomePage({ onGetStarted }) {
           <li><a href="#features">Features</a></li>
           <li><a href="#how">How It Works</a></li>
           <li><a href="#metrics">Metrics</a></li>
+          {user ? (
+            <>
+              <li style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: 'var(--green-100)', color: 'var(--green-700)', padding: '0.3rem 0.8rem', borderRadius: '100px', fontSize: '0.8rem', fontWeight: 700 }}>
+                   👋 {user}
+                </div>
+              </li>
+              <li>
+                <button 
+                   onClick={(e) => { e.preventDefault(); onLogout(); }}
+                   style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer' }}>
+                   Logout
+                </button>
+              </li>
+            </>
+          ) : null}
           <li>
             <a href="#get-started" className="nav-cta" onClick={e => { e.preventDefault(); onGetStarted(); }}>
-              Launch Dashboard →
+              {user ? 'Open Dashboard →' : 'Launch Dashboard →'}
             </a>
           </li>
         </ul>

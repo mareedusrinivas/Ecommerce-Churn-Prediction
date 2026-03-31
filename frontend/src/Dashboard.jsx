@@ -82,7 +82,7 @@ function GroupedBars({ data }) {
 }
 
 /* ── Main Dashboard component ────────────────────────────────────── */
-export default function Dashboard({ onBack }) {
+export default function Dashboard({ onBack, onLogout, username }) {
   const [tab, setTab] = useState('single');
 
   /* Single */
@@ -196,8 +196,14 @@ export default function Dashboard({ onBack }) {
           <div style={{ width:32, height:32, background:'linear-gradient(135deg,#4ade80,#16a34a)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>🛒</div>
           <span style={{ fontWeight:700, color:'#111827' }}>Ecommerce Churn Prediction</span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem', color:'#15803d', background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'0.35rem 0.875rem', borderRadius:100 }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e', display:'inline-block' }} /> Model Active
+        <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem', color:'#15803d', background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'0.35rem 0.875rem', borderRadius:100 }}>
+            <span style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e', display:'inline-block' }} /> 
+            Active: <strong style={{ marginLeft:2 }}>{username}</strong>
+          </div>
+          <button onClick={onLogout} style={{ background:'none', border:'none', color:'#ef4444', fontSize:'0.85rem', fontWeight:600, cursor:'pointer' }}>
+            Logout
+          </button>
         </div>
       </div>
 

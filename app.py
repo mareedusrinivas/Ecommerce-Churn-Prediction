@@ -1,12 +1,7 @@
-import os
-import numpy as np
-import pandas as pd
-from flask import Flask, request, jsonify, render_template, send_file, flash, redirect, url_for
-from werkzeug.utils import secure_filename
-from flask_cors import CORS
-import joblib
-from datetime import datetime
 import logging
+import json
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask import session
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
@@ -18,11 +13,16 @@ app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_develo
 # ─── Configuration ────────────────────────────────────────────────────────────
 UPLOAD_FOLDER = 'uploads'
 DOWNLOAD_FOLDER = 'downloads'
+USER_DATA_FILE = 'users.json'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+
+if not os.path.exists(USER_DATA_FILE):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump({}, f)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
@@ -181,6 +181,16 @@ def read_uploaded_file(file_path, ext):
         )
 
 
+# ─── Auth Helpers ──────────────────────────────────────────────────────────────
+def get_users():
+    with open(USER_DATA_FILE, 'r') as f:
+        return json.load(f)
+
+def save_users(users):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump(users, f, indent=4)
+
+
 # ─── Routes ───────────────────────────────────────────────────────────────────
 @app.route('/')
 def home():
@@ -195,6 +205,52 @@ def home():
             'template': '/download_template/<format> [GET]'
         }
     })
+
+
+# ─── Auth API ──────────────────────────────────────────────────────────────────
+@app.route('/api/signup', methods=['POST'])
+def signup():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'error': 'Missing username or password'}), 400
+
+    users = get_users()
+    if username in users:
+        return jsonify({'error': 'User already exists'}), 409
+
+    users[username] = generate_password_hash(password)
+    save_users(users)
+    return jsonify({'success': 'User registered successfully'}), 200
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    users = get_users()
+    if username not in users or not check_password_hash(users[username], password):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    session['user'] = username
+    return jsonify({'success': 'Logged in', 'username': username}), 200
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.pop('user', None)
+    return jsonify({'success': 'Logged out'}), 200
+
+
+@app.route('/api/check_auth')
+def check_auth():
+    if 'user' in session:
+        return jsonify({'authenticated': True, 'username': session['user']}), 200
+    return jsonify({'authenticated': False}), 200
 
 
 @app.route('/predict', methods=['POST'])
