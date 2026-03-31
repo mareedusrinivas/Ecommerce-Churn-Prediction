@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from flask import Flask, request, jsonify, render_template, send_file, flash, redirect, url_for
 from werkzeug.utils import secure_filename
+from flask_cors import CORS
 import joblib
 from datetime import datetime
 import logging
@@ -11,15 +12,15 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 app = Flask(__name__)
+CORS(app)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_development")
 
-# Configuration
+# ─── Configuration ────────────────────────────────────────────────────────────
 UPLOAD_FOLDER = 'uploads'
 DOWNLOAD_FOLDER = 'downloads'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
-MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB max file size
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
-# Create directories if they don't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
@@ -27,349 +28,498 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
-# Load only the Decision Tree model
+# ─── Ecommerce Feature Columns (must match model training order) ──────────────
+EXPECTED_COLUMNS = [
+    'Age',
+    'Gender',
+    'AnnualIncome',
+    'SpendingScore',
+    'TenureMonths',
+    'NumOrders',
+    'AvgOrderValue',
+    'LastLoginDaysAgo',
+    'IsActiveMember',
+]
+
+# ─── Load Model ───────────────────────────────────────────────────────────────
 try:
     dt_model = joblib.load('models/nate_decision_tree.sav')
-    logging.info("Decision Tree model loaded successfully")
+    logging.info("Ecommerce Decision Tree model loaded successfully.")
     model_loaded = True
 except Exception as e:
-    logging.error(f"Error loading Decision Tree model: {e}")
+    logging.error(f"Error loading model: {e}")
     dt_model = None
     model_loaded = False
 
-# Expected column order for the model
-EXPECTED_COLUMNS = [
-    'CreditScore', 'Geography', 'Gender', 'Age', 'Tenure', 
-    'Balance', 'NumOfProducts', 'HasCrCard', 'IsActiveMember', 'EstimatedSalary'
-]
 
+# ─── Helpers ──────────────────────────────────────────────────────────────────
 def allowed_file(filename):
-    """Check if file extension is allowed"""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def decode(pred):
-    """Function to decode predictions"""
-    if pred == 1: 
-        return 'Customer Exits'
-    else: 
-        return 'Customer Stays'
 
-def get_prediction_confidence(pred_proba):
-    """Get prediction confidence level"""
+def decode(pred):
+    return 'Customer Churns' if pred == 1 else 'Customer Stays'
+
+
+def get_confidence(pred_proba):
     confidence = max(pred_proba) * 100
     if confidence >= 80:
         return "High"
     elif confidence >= 60:
         return "Medium"
-    else:
-        return "Low"
+    return "Low"
 
-def validate_excel_data(df):
-    """Validate Excel data structure"""
+
+def validate_data(df):
     errors = []
-    
-    # Check if all required columns are present
-    missing_cols = set(EXPECTED_COLUMNS) - set(df.columns)
-    if missing_cols:
-        errors.append(f"Missing required columns: {', '.join(missing_cols)}")
-    
-    # Check for empty dataframe
+    missing = set(EXPECTED_COLUMNS) - set(df.columns)
+    if missing:
+        errors.append(f"Missing columns: {', '.join(missing)}")
     if df.empty:
-        errors.append("Excel file is empty")
-    
-    # Check data types and ranges
+        errors.append("File is empty.")
+
     try:
-        if 'CreditScore' in df.columns:
-            if not df['CreditScore'].between(300, 850).all():
-                errors.append("CreditScore must be between 300 and 850")
-        
-        if 'Age' in df.columns:
-            if not df['Age'].between(18, 100).all():
-                errors.append("Age must be between 18 and 100")
-        
-        if 'Geography' in df.columns:
-            valid_geo = ['France', 'Germany', 'Spain']
-            if not df['Geography'].isin(valid_geo).all():
-                errors.append(f"Geography must be one of: {', '.join(valid_geo)}")
-        
-        if 'Gender' in df.columns:
-            valid_gender = ['Male', 'Female']
-            if not df['Gender'].isin(valid_gender).all():
-                errors.append(f"Gender must be one of: {', '.join(valid_gender)}")
-                
+        if 'SatisfactionScore' in df.columns:
+            if not df['SatisfactionScore'].between(1, 5).all():
+                errors.append("SatisfactionScore must be between 1 and 5.")
+        if 'CartAbandonmentRate' in df.columns:
+            if not df['CartAbandonmentRate'].between(0, 100).all():
+                errors.append("CartAbandonmentRate must be between 0 and 100.")
+        if 'DeviceType' in df.columns:
+            if not df['DeviceType'].isin([0, 1, 2]).all():
+                errors.append("DeviceType must be 0 (Mobile), 1 (Desktop), or 2 (Tablet).")
     except Exception as e:
-        errors.append(f"Data validation error: {str(e)}")
-    
+        errors.append(f"Validation error: {str(e)}")
     return errors
 
-def preprocess_batch_data(df):
-    """Preprocess batch data for model prediction"""
+
+def preprocess_data(df):
     try:
-        # Create a copy to avoid modifying original
-        processed_df = df.copy()
-        
-        # Handle geography encoding - check if already numeric or needs mapping
-        if processed_df['Geography'].dtype == 'object':
-            geo_map = {'France': 0, 'Germany': 1, 'Spain': 2}
-            processed_df['Geography'] = processed_df['Geography'].map(geo_map)
-        
-        # Handle gender encoding - check if already numeric or needs mapping
-        if processed_df['Gender'].dtype == 'object':
-            gender_map = {'Female': 0, 'Male': 1}
-            processed_df['Gender'] = processed_df['Gender'].map(gender_map)
-        
-        # Ensure correct column order
-        processed_df = processed_df[EXPECTED_COLUMNS]
-        
-        # Convert all columns to numeric, handling any remaining string values
-        for col in processed_df.columns:
-            processed_df[col] = pd.to_numeric(processed_df[col], errors='coerce')
-        
-        # Fill any NaN values with 0 (fallback for conversion errors)
-        processed_df = processed_df.fillna(0)
-        
-        # Convert to numpy array with float dtype
-        return processed_df.astype(float).values
-    
+        processed = df.copy()[EXPECTED_COLUMNS]
+        for col in processed.columns:
+            processed[col] = pd.to_numeric(processed[col], errors='coerce')
+        processed = processed.fillna(0)
+        return processed.astype(float).values
     except Exception as e:
-        logging.error(f"Error preprocessing data: {e}")
+        logging.error(f"Preprocessing error: {e}")
         raise
 
+
+# ─── File reading helper (robust, magic-byte aware) ───────────────────────────
+def read_uploaded_file(file_path, ext):
+    """
+    Read a CSV or Excel file robustly.
+    Detects the actual file format from magic bytes rather than trusting
+    the extension, so renamed or re-uploaded files still work correctly.
+    Also strips any extra prediction columns (from previous output files)
+    so re-uploading a predictions file works cleanly.
+    """
+    # 1. Read magic bytes to detect real format
+    with open(file_path, 'rb') as f:
+        magic = f.read(8)
+
+    # PK header = ZIP = xlsx/xlsm
+    is_zip  = magic[:2] == b'PK'
+    # D0 CF 11 E0 = Compound Document = old-format xls
+    is_biff = magic[:8] == b'\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1'
+    # Check for HTML
+    is_html = magic.startswith(b'<!DOCTYP') or magic.startswith(b'<html>') or magic.startswith(b'<html')
+
+    if is_html:
+        raise ValueError("The uploaded file is an HTML (web) page, not an Excel or CSV file. "
+                         "This usually happens when a download link fails and returns an error page instead of the file.")
+
+    def _strip_extra_cols(df):
+        """Drop any columns added by previous prediction runs."""
+        extra = {'Churn_Prediction', 'Prediction_Confidence', 'Churn_Probability_%'}
+        return df.drop(columns=[c for c in extra if c in df.columns], errors='ignore')
+
+    if is_zip or ext == 'xlsx':
+        try:
+            df = pd.read_excel(file_path, engine='openpyxl')
+            return _strip_extra_cols(df)
+        except Exception as e1:
+            logging.warning(f"openpyxl failed ({e1}), trying xlrd …")
+            try:
+                df = pd.read_excel(file_path, engine='xlrd')
+                return _strip_extra_cols(df)
+            except Exception as e2:
+                raise ValueError(
+                    f"Could not read Excel file. openpyxl: {e1} | xlrd: {e2}"
+                )
+
+    elif is_biff or ext == 'xls':
+        try:
+            df = pd.read_excel(file_path, engine='xlrd')
+            return _strip_extra_cols(df)
+        except Exception as e:
+            try:
+                df = pd.read_excel(file_path, engine='openpyxl')
+                return _strip_extra_cols(df)
+            except Exception:
+                raise ValueError(f"Could not read .xls file: {e}")
+
+    else:
+        # CSV or unknown — try CSV first, then Excel engines
+        for enc in ('utf-8-sig', 'utf-8', 'latin-1', 'cp1252'):
+            try:
+                df = pd.read_csv(file_path, encoding=enc)
+                return _strip_extra_cols(df)
+            except (UnicodeDecodeError, pd.errors.ParserError):
+                continue
+
+        # Last resort: might be an xlsx file with wrong extension
+        for engine in ('openpyxl', 'xlrd'):
+            try:
+                df = pd.read_excel(file_path, engine=engine)
+                return _strip_extra_cols(df)
+            except Exception:
+                continue
+
+        raise ValueError(
+            "Could not read the file. Please upload a valid .xlsx, .xls, or .csv file."
+        )
+
+
+# ─── Routes ───────────────────────────────────────────────────────────────────
 @app.route('/')
 def home():
-    """Home page with both single and batch prediction options"""
-    return render_template('index.html', model_loaded=model_loaded)
+    """Simple API status or basic entry page."""
+    return jsonify({
+        'status': 'online',
+        'service': 'ShopChurn AI Backend',
+        'model_loaded': model_loaded,
+        'endpoints': {
+            'predict': '/predict_json [POST]',
+            'batch': '/batch_predict_json [POST]',
+            'template': '/download_template/<format> [GET]'
+        }
+    })
+
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    """Single record prediction using Decision Tree model"""
+    """Single record ecommerce churn prediction."""
     try:
         if not model_loaded:
-            flash('Decision Tree model is not available. Please check model files.', 'error')
+            flash('Model is not available. Please check model files.', 'error')
             return redirect(url_for('home'))
-        
-        # List values received from form
-        values = [x for x in request.form.values()]
 
-        # Convert string values to appropriate numeric types
+        values = [x for x in request.form.values()]
         numeric_values = []
-        for i, val in enumerate(values):
+        for val in values:
             try:
-                # Convert to float first, then to int if it's a whole number
-                float_val = float(val)
-                if float_val.is_integer() and i in [0, 1, 2, 3, 4, 6, 7, 8]:  # Integer columns
-                    numeric_values.append(int(float_val))
-                else:
-                    numeric_values.append(float_val)
+                fv = float(val)
+                numeric_values.append(fv)
             except ValueError:
-                numeric_values.append(0)  # Default fallback
-        
-        # new_array - input to model
+                numeric_values.append(0.0)
+
         new_array = np.array(numeric_values, dtype=float).reshape(1, -1)
         logging.debug(f"Input array: {new_array}")
-        logging.debug(f"Input values: {values}")
-        
-        # Create customer dictionary for display
-        custd = {}
-        for k, v in zip(EXPECTED_COLUMNS, values):
-            custd[k] = v
 
-        # Convert 1 or 0 to Yes or No for display   
-        yn_val = ['HasCrCard', 'IsActiveMember']
-        for val in yn_val:
-            if custd[val] == '1': 
-                custd[val] = 'Yes'
-            else: 
-                custd[val] = 'No'
+        custd = dict(zip(EXPECTED_COLUMNS, values))
+        # Convert binary fields for display
+        custd['UsesDiscounts'] = 'Yes' if custd.get('UsesDiscounts') == '1' else 'No'
+        device_map = {'0': 'Mobile', '1': 'Desktop', '2': 'Tablet'}
+        custd['DeviceType'] = device_map.get(custd.get('DeviceType', '0'), 'Mobile')
 
-        # Make prediction with Decision Tree model
         prediction = dt_model.predict(new_array)[0]
         prediction_text = decode(prediction)
-        
-        # Get prediction probabilities for confidence
+
         try:
-            prediction_proba = dt_model.predict_proba(new_array)[0]
-            confidence = get_prediction_confidence(prediction_proba)
-            probability = max(prediction_proba) * 100
-        except:
+            proba = dt_model.predict_proba(new_array)[0]
+            confidence = get_confidence(proba)
+            probability = round(max(proba) * 100, 1)
+        except Exception:
             confidence = "Unknown"
             probability = 0
 
-        # Create result dictionary
         result = {
             'prediction': prediction_text,
             'confidence': confidence,
-            'probability': round(probability, 1),
+            'probability': probability,
             'customer': custd
         }
 
         flash('Prediction completed successfully!', 'success')
         return render_template('index.html', result=result, model_loaded=model_loaded)
-        
+
     except Exception as e:
-        logging.error(f"Error in single prediction: {e}")
+        logging.error(f"Single prediction error: {e}")
         flash(f'Error making prediction: {str(e)}', 'error')
         return redirect(url_for('home'))
 
-@app.route('/batch_predict', methods=['POST'])
-def batch_predict():
-    """Batch prediction from Excel file using Decision Tree model"""
+
+@app.route('/predict_json', methods=['POST'])
+def predict_json():
+    """JSON API endpoint for React frontend single prediction."""
     try:
         if not model_loaded:
-            flash('Decision Tree model is not available. Please check model files.', 'error')
+            return jsonify({'error': 'Model not loaded'}), 503
+
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+
+        row = [float(data.get(col, 0)) for col in EXPECTED_COLUMNS]
+        new_array = np.array(row, dtype=float).reshape(1, -1)
+
+        prediction = dt_model.predict(new_array)[0]
+        prediction_text = decode(prediction)
+
+        try:
+            proba = dt_model.predict_proba(new_array)[0]
+            confidence = get_confidence(proba)
+            probability = round(max(proba) * 100, 1)
+        except Exception:
+            confidence = "Unknown"
+            probability = 0.0
+
+        return jsonify({
+            'prediction': prediction_text,
+            'churns': bool(prediction == 1),
+            'confidence': confidence,
+            'probability': probability,
+        })
+
+    except Exception as e:
+        logging.error(f"JSON prediction error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/batch_predict_json', methods=['POST'])
+def batch_predict_json():
+    """Batch prediction returning full JSON for React graphical dashboard."""
+    try:
+        if not model_loaded:
+            return jsonify({'error': 'Model not loaded'}), 503
+
+        if 'excel_file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+
+        file = request.files['excel_file']
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+
+        filename = secure_filename(file.filename or 'upload')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{timestamp}_{filename}")
+        file.save(file_path)
+
+        ext = filename.lower().rsplit('.', 1)[-1]
+        try:
+            df = read_uploaded_file(file_path, ext)
+        except Exception as e:
+            return jsonify({'error': f'Error reading file: {str(e)}'}), 400
+        finally:
+            try: os.remove(file_path)
+            except: pass
+
+        errors = validate_data(df)
+        if errors:
+            return jsonify({'error': '; '.join(errors)}), 400
+
+        processed = preprocess_data(df)
+        predictions = dt_model.predict(processed)
+        probas = dt_model.predict_proba(processed)
+
+        # Build per-row results
+        rows = []
+        for i, (pred, proba) in enumerate(zip(predictions, probas)):
+            churn_prob = round(float(max(proba)) * 100, 1) if pred == 1 else round(float(proba[1]) * 100, 1)
+            rows.append({
+                'id': i + 1,
+                'customerID': int(df.iloc[i].get('CustomerID', 0)),
+                'prediction': decode(pred),
+                'churns': bool(pred == 1),
+                'probability': round(float(proba[1]) * 100, 1),
+                'confidence': get_confidence(proba),
+                'age': int(df.iloc[i].get('Age', 0)),
+                'annualIncome': float(df.iloc[i].get('AnnualIncome', 0)),
+                'spendingScore': float(df.iloc[i].get('SpendingScore', 0)),
+                'tenureMonths': int(df.iloc[i].get('TenureMonths', 0)),
+                'numOrders': int(df.iloc[i].get('NumOrders', 0)),
+                'isActiveMember': int(df.iloc[i].get('IsActiveMember', 0)),
+            })
+
+        total = len(rows)
+        churned = sum(1 for r in rows if r['churns'])
+        stays = total - churned
+        avg_prob = round(sum(r['probability'] for r in rows) / total, 1) if total else 0
+
+        # Confidence breakdown
+        conf_counts = {'High': 0, 'Medium': 0, 'Low': 0}
+        for r in rows:
+            conf_counts[r['confidence']] = conf_counts.get(r['confidence'], 0) + 1
+
+        # Risk buckets (0-25, 25-50, 50-75, 75-100)
+        buckets = [0, 0, 0, 0]
+        for r in rows:
+            p = r['probability']
+            if p < 25: buckets[0] += 1
+            elif p < 50: buckets[1] += 1
+            elif p < 75: buckets[2] += 1
+            else: buckets[3] += 1
+
+        # Feature averages for churned vs stayed
+        churn_rows = [r for r in rows if r['churns']]
+        stay_rows  = [r for r in rows if not r['churns']]
+
+        def avg(lst, key):
+            return round(sum(r[key] for r in lst) / len(lst), 1) if lst else 0
+
+        feature_comparison = {
+            'labels': ['Spending Score', 'Tenure (Mo)', 'Num Orders', 'Active %'],
+            'churned': [
+                avg(churn_rows, 'spendingScore'),
+                avg(churn_rows, 'tenureMonths'),
+                avg(churn_rows, 'numOrders'),
+                avg(churn_rows, 'isActiveMember') * 100,
+            ],
+            'stayed': [
+                avg(stay_rows, 'spendingScore'),
+                avg(stay_rows, 'tenureMonths'),
+                avg(stay_rows, 'numOrders'),
+                avg(stay_rows, 'isActiveMember') * 100,
+            ],
+        }
+
+        return jsonify({
+            'summary': {
+                'total': total,
+                'churned': churned,
+                'stays': stays,
+                'churnRate': round(churned / total * 100, 1) if total else 0,
+                'avgChurnProbability': avg_prob,
+            },
+            'confidenceBreakdown': conf_counts,
+            'riskBuckets': {
+                'labels': ['Low (0-25%)', 'Moderate (25-50%)', 'High (50-75%)', 'Critical (75-100%)'],
+                'values': buckets,
+            },
+            'featureComparison': feature_comparison,
+            'rows': rows[:200],  # cap at 200 for performance
+        })
+
+    except Exception as e:
+        logging.error(f"Batch JSON error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/batch_predict', methods=['POST'])
+def batch_predict():
+    """Batch prediction from uploaded Excel/CSV file."""
+    try:
+        if not model_loaded:
+            flash('Model is not available.', 'error')
             return redirect(url_for('home'))
-        
-        # Check if file was uploaded
+
         if 'excel_file' not in request.files:
             flash('No file selected', 'error')
             return redirect(url_for('home'))
-        
+
         file = request.files['excel_file']
-        
         if file.filename == '':
             flash('No file selected', 'error')
             return redirect(url_for('home'))
-        
+
         if not allowed_file(file.filename):
-            flash('Invalid file type. Please upload .xlsx, .xls, or .csv files only.', 'error')
+            flash('Invalid file type. Please upload .xlsx, .xls, or .csv files.', 'error')
             return redirect(url_for('home'))
-        
-        # Save uploaded file
-        original_filename = file.filename if file.filename else 'uploaded_file'
-        filename = secure_filename(original_filename)
+
+        filename = secure_filename(file.filename or 'upload')
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        unique_filename = f"{timestamp}_{filename}"
-        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+        unique_fn = f"{timestamp}_{filename}"
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_fn)
         file.save(file_path)
-        
-        # Read file based on extension
+
+        ext = filename.lower().rsplit('.', 1)[-1]
         try:
-            file_extension = filename.lower().split('.')[-1]
-            if file_extension == 'csv':
-                df = pd.read_csv(file_path)
-                logging.info(f"Loaded CSV file with {len(df)} rows and {len(df.columns)} columns")
-            else:
-                df = pd.read_excel(file_path)
-                logging.info(f"Loaded Excel file with {len(df)} rows and {len(df.columns)} columns")
+            df = read_uploaded_file(file_path, ext)
+            logging.info(f"Loaded file: {len(df)} rows, {len(df.columns)} cols")
         except Exception as e:
             flash(f'Error reading file: {str(e)}', 'error')
             return redirect(url_for('home'))
-        
-        # Validate data
-        validation_errors = validate_excel_data(df)
-        if validation_errors:
-            flash(f'Validation errors: {"; ".join(validation_errors)}', 'error')
+
+        errors = validate_data(df)
+        if errors:
+            flash(f'Validation errors: {"; ".join(errors)}', 'error')
             return redirect(url_for('home'))
-        
-        # Preprocess data
-        try:
-            processed_data = preprocess_batch_data(df)
-            logging.info(f"Preprocessed data shape: {processed_data.shape}")
-        except Exception as e:
-            flash(f'Error preprocessing data: {str(e)}', 'error')
-            return redirect(url_for('home'))
-        
-        # Make predictions with Decision Tree model
+
+        processed = preprocess_data(df)
         results_df = df.copy()
-        
+
+        predictions = dt_model.predict(processed)
+        results_df['Churn_Prediction'] = [decode(p) for p in predictions]
+
         try:
-            predictions = dt_model.predict(processed_data)
-            decoded_predictions = [decode(pred) for pred in predictions]
-            results_df['Decision_Tree_Prediction'] = decoded_predictions
-            
-            # Add prediction probabilities
-            try:
-                prediction_probas = dt_model.predict_proba(processed_data)
-                confidence_scores = [get_prediction_confidence(proba) for proba in prediction_probas]
-                probability_scores = [round(max(proba) * 100, 1) for proba in prediction_probas]
-                results_df['Prediction_Confidence'] = confidence_scores
-                results_df['Prediction_Probability'] = probability_scores
-            except:
-                results_df['Prediction_Confidence'] = 'Unknown'
-                results_df['Prediction_Probability'] = 0
-            
-            logging.info("Completed predictions with Decision Tree model")
-        except Exception as e:
-            logging.error(f"Error with Decision Tree model: {e}")
-            flash(f'Error making predictions: {str(e)}', 'error')
-            return redirect(url_for('home'))
-        
-        # Save results to same format as input file
-        file_extension = filename.lower().split('.')[-1]
-        if file_extension == 'csv':
-            output_filename = f"predictions_{timestamp}_{filename}"
-            output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_filename)
-            try:
-                results_df.to_csv(output_path, index=False)
-                logging.info(f"Results saved to {output_path}")
-            except Exception as e:
-                flash(f'Error saving results: {str(e)}', 'error')
-                return redirect(url_for('home'))
+            probas = dt_model.predict_proba(processed)
+            results_df['Prediction_Confidence'] = [get_confidence(p) for p in probas]
+            results_df['Churn_Probability_%'] = [round(max(p) * 100, 1) for p in probas]
+        except Exception:
+            results_df['Prediction_Confidence'] = 'Unknown'
+            results_df['Churn_Probability_%'] = 0
+
+        output_fn = f"predictions_{timestamp}_{filename}"
+        output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_fn)
+
+        if ext == 'csv':
+            results_df.to_csv(output_path, index=False)
         else:
-            output_filename = f"predictions_{timestamp}_{filename}"
-            output_path = os.path.join(app.config['DOWNLOAD_FOLDER'], output_filename)
-            try:
-                with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-                    results_df.to_excel(writer, index=False, sheet_name='Predictions')
-                logging.info(f"Results saved to {output_path}")
-            except Exception as e:
-                flash(f'Error saving results: {str(e)}', 'error')
-                return redirect(url_for('home'))
-        
-        # Clean up uploaded file
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                results_df.to_excel(writer, index=False, sheet_name='Predictions')
+
         try:
             os.remove(file_path)
-        except:
+        except Exception:
             pass
-        
+
         flash(f'Batch prediction completed! Processed {len(df)} records.', 'success')
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
-        
+        return send_file(output_path, as_attachment=True, download_name=output_fn)
+
     except Exception as e:
-        logging.error(f"Error in batch prediction: {e}")
+        logging.error(f"Batch prediction error: {e}")
         flash(f'Error processing file: {str(e)}', 'error')
         return redirect(url_for('home'))
+
 
 @app.route('/download_template')
 @app.route('/download_template/<format>')
 def download_template(format='excel'):
-    """Download template file in Excel or CSV format"""
+    """Download an ecommerce data template."""
     try:
-        # Create template DataFrame with more realistic sample data
         template_data = {
-            'CreditScore': [619, 608, 502, 699, 850, 645, 822, 376, 501, 684],
-            'Geography': ['France', 'Spain', 'France', 'France', 'Germany', 'Spain', 'France', 'Germany', 'France', 'France'],
-            'Gender': ['Female', 'Female', 'Female', 'Female', 'Female', 'Male', 'Male', 'Female', 'Male', 'Male'],
-            'Age': [42, 41, 42, 39, 43, 44, 50, 29, 44, 27],
-            'Tenure': [2, 1, 8, 1, 2, 8, 7, 4, 4, 2],
-            'Balance': [0.00, 83807.86, 159660.80, 0.00, 125510.82, 113755.78, 0.00, 115046.74, 142051.07, 134603.88],
-            'NumOfProducts': [1, 1, 3, 2, 1, 2, 2, 4, 2, 1],
-            'HasCrCard': ['Yes', 'No', 'Yes', 'No', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes'],
-            'IsActiveMember': ['Yes', 'Yes', 'No', 'No', 'Yes', 'No', 'Yes', 'No', 'Yes', 'Yes'],
-            'EstimatedSalary': [101348.88, 112542.58, 113931.57, 93826.63, 79084.10, 149756.71, 10062.80, 119346.88, 74940.50, 71725.73]
+            'CustomerID':            [1001, 1002, 1003, 1004, 1005],
+            'Age':                   [25, 42, 19, 31, 55],
+            'Gender':                [1, 0, 1, 1, 0], # 1=Female, 0=Male
+            'AnnualIncome':          [45000, 80000, 22000, 110000, 65000],
+            'SpendingScore':         [80, 50, 95, 20, 60],
+            'TenureMonths':          [12, 48, 2, 72, 36],
+            'NumOrders':             [5, 20, 1, 35, 12],
+            'AvgOrderValue':         [65.50, 120.00, 15.75, 450.00, 85.00],
+            'LastLoginDaysAgo':      [2, 30, 0, 45, 15],
+            'IsActiveMember':        [1, 1, 0, 0, 1],
         }
-        
+
         df = pd.DataFrame(template_data)
-        
-        # Generate filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
+
         if format.lower() == 'csv':
-            filename = f'customer_data_template_{timestamp}.csv'
+            filename = f'ecommerce_template_{timestamp}.csv'
             filepath = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
             df.to_csv(filepath, index=False)
         else:
-            filename = f'customer_data_template_{timestamp}.xlsx'
+            filename = f'ecommerce_template_{timestamp}.xlsx'
             filepath = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
             with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Customer_Data')
-        
+
         return send_file(filepath, as_attachment=True, download_name=filename)
-        
+
     except Exception as e:
-        logging.error(f"Error creating template: {e}")
-        flash(f'Error creating template: {str(e)}', 'error')
-        return redirect(url_for('home'))
+        logging.error(f"Template error: {e}")
+        return jsonify({'error': f'Error creating template: {str(e)}'}), 500
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)

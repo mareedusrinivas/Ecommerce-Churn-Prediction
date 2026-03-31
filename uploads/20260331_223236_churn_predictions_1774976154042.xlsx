@@ -70,31 +70,16 @@
                             Customer Churn Prediction System
                         </h1>
                         <p class="lead mb-0">Predict customer behavior using machine learning model</p>
-                        {% if not model_loaded %}
-                        <div class="alert alert-warning mt-3 mb-0">
-                            <i class="fas fa-exclamation-triangle me-2"></i>
-                            model is not loaded. Please ensure the model file exists.
-                        </div>
-                        {% endif %}
+                        
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- Flash Messages -->
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="container mb-4">
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-                            <i class="fas fa-{{ 'exclamation-triangle' if category == 'error' else 'check-circle' }} me-2"></i>
-                            {{ message }}
-                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                        </div>
-                    {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
+        
+            
+        
 
         <!-- Main Content -->
         <div class="container">
@@ -131,73 +116,73 @@
                                             <div class="col-md-6 mb-3">
                                                 <label for="credit_score" class="form-label">Credit Score</label>
                                                 <input type="number" class="form-control" id="credit_score" name="credit_score" 
-                                                       min="300" max="850" value="{{ result.customer.CreditScore if result else 600 }}" required>
+                                                       min="300" max="850" value="600" required>
                                                 <div class="form-text">300 - 850</div>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="geography" class="form-label">Geography</label>
                                                 <select class="form-select" id="geography" name="geography" required>
-                                                    <option value="0" {{ 'selected' if result and result.customer.Geography == 'France' else '' }}>France</option>
-                                                    <option value="1" {{ 'selected' if result and result.customer.Geography == 'Germany' else '' }}>Germany</option>
-                                                    <option value="2" {{ 'selected' if result and result.customer.Geography == 'Spain' else '' }}>India</option>
+                                                    <option value="0" >France</option>
+                                                    <option value="1" >Germany</option>
+                                                    <option value="2" >India</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="gender" class="form-label">Gender</label>
                                                 <select class="form-select" id="gender" name="gender" required>
-                                                    <option value="0" {{ 'selected' if result and result.customer.Gender == 'Female' else '' }}>Female</option>
-                                                    <option value="1" {{ 'selected' if result and result.customer.Gender == 'Male' else '' }}>Male</option>
+                                                    <option value="0" >Female</option>
+                                                    <option value="1" >Male</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="age" class="form-label">Age</label>
                                                 <input type="number" class="form-control" id="age" name="age" 
-                                                       min="18" max="100" value="{{ result.customer.Age if result else 35 }}" required>
+                                                       min="18" max="100" value="35" required>
                                                 <div class="form-text">18 - 100 years</div>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="tenure" class="form-label">Tenure (Years)</label>
                                                 <input type="number" class="form-control" id="tenure" name="tenure" 
-                                                       min="0" max="10" value="{{ result.customer.Tenure if result else 2 }}" required>
+                                                       min="0" max="10" value="2" required>
                                                 <div class="form-text">Years with bank</div>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="balance" class="form-label">Balance</label>
                                                 <input type="number" class="form-control" id="balance" name="balance" 
-                                                       min="0" step="0.01" value="{{ result.customer.Balance if result else 0 }}" required>
+                                                       min="0" step="0.01" value="0" required>
                                                 <div class="form-text">Account balance</div>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="num_products" class="form-label">Number of Products</label>
                                                 <select class="form-select" id="num_products" name="num_products" required>
-                                                    <option value="1" {{ 'selected' if result and result.customer.NumOfProducts == '1' else '' }}>1</option>
-                                                    <option value="2" {{ 'selected' if result and result.customer.NumOfProducts == '2' else '' }}>2</option>
-                                                    <option value="3" {{ 'selected' if result and result.customer.NumOfProducts == '3' else '' }}>3</option>
-                                                    <option value="4" {{ 'selected' if result and result.customer.NumOfProducts == '4' else '' }}>4</option>
+                                                    <option value="1" >1</option>
+                                                    <option value="2" >2</option>
+                                                    <option value="3" >3</option>
+                                                    <option value="4" >4</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="has_credit_card" class="form-label">Has Credit Card</label>
                                                 <select class="form-select" id="has_credit_card" name="has_credit_card" required>
-                                                    <option value="0" {{ 'selected' if result and result.customer.HasCrCard == 'No' else '' }}>No</option>
-                                                    <option value="1" {{ 'selected' if result and result.customer.HasCrCard == 'Yes' else '' }}>Yes</option>
+                                                    <option value="0" >No</option>
+                                                    <option value="1" >Yes</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="is_active_member" class="form-label">Active Member</label>
                                                 <select class="form-select" id="is_active_member" name="is_active_member" required>
-                                                    <option value="0" {{ 'selected' if result and result.customer.IsActiveMember == 'No' else '' }}>No</option>
-                                                    <option value="1" {{ 'selected' if result and result.customer.IsActiveMember == 'Yes' else '' }}>Yes</option>
+                                                    <option value="0" >No</option>
+                                                    <option value="1" >Yes</option>
                                                 </select>
                                             </div>
                                             <div class="col-md-6 mb-3">
                                                 <label for="estimated_salary" class="form-label">Estimated Salary</label>
                                                 <input type="number" class="form-control" id="estimated_salary" name="estimated_salary" 
-                                                       min="0" step="0.01" value="{{ result.customer.EstimatedSalary if result else 50000 }}" required>
+                                                       min="0" step="0.01" value="50000" required>
                                                 <div class="form-text">Annual salary estimate</div>
                                             </div>
                                         </div>
-                                        <button type="submit" class="btn btn-primary w-100" {{ 'disabled' if not model_loaded else '' }}>
+                                        <button type="submit" class="btn btn-primary w-100" >
                                             <i class="fas fa-magic me-2"></i>Predict Churn
                                         </button>
                                     </form>
@@ -214,54 +199,13 @@
                                     </h5>
                                 </div>
                                 <div class="card-body">
-                                    {% if result %}
-                                        <!-- Customer Summary -->
-                                        <div class="alert alert-info mb-4">
-                                            <h6><i class="fas fa-user me-2"></i>Customer Summary</h6>
-                                            <div class="row">
-                                                <div class="col-6">
-                                                    <small><strong>Credit Score:</strong> {{ result.customer.CreditScore }}</small><br>
-                                                    <small><strong>Geography:</strong> {{ result.customer.Geography }}</small><br>
-                                                    <small><strong>Gender:</strong> {{ result.customer.Gender }}</small><br>
-                                                    <small><strong>Age:</strong> {{ result.customer.Age }}</small><br>
-                                                    <small><strong>Tenure:</strong> {{ result.customer.Tenure }} years</small>
-                                                </div>
-                                                <div class="col-6">
-                                                    <small><strong>Balance:</strong> ${{ "%.2f"|format(result.customer.Balance|float) }}</small><br>
-                                                    <small><strong>Products:</strong> {{ result.customer.NumOfProducts }}</small><br>
-                                                    <small><strong>Credit Card:</strong> {{ result.customer.HasCrCard }}</small><br>
-                                                    <small><strong>Active Member:</strong> {{ result.customer.IsActiveMember }}</small><br>
-                                                    <small><strong>Salary:</strong> ${{ "%.2f"|format(result.customer.EstimatedSalary|float) }}</small>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Prediction Result -->
-                                        <div class="card prediction-card border-{{ 'success' if result.prediction == 'Customer Stays' else 'danger' }}">
-                                            <div class="card-body text-center">
-                                                <div class="result-icon {{ 'result-stays' if result.prediction == 'Customer Stays' else 'result-exits' }}">
-                                                    <i class="fas fa-{{ 'check-circle' if result.prediction == 'Customer Stays' else 'times-circle' }}"></i>
-                                                </div>
-                                                <h4 class="prediction-result {{ 'result-stays' if result.prediction == 'Customer Stays' else 'result-exits' }}">
-                                                    {{ result.prediction }}
-                                                </h4>
-                                                <p class="mb-2">
-                                                    <span class="badge bg-{{ 'success' if result.confidence == 'High' else 'warning' if result.confidence == 'Medium' else 'secondary' }} confidence-badge">
-                                                        {{ result.confidence }} Confidence ({{ result.probability }}%)
-                                                    </span>
-                                                </p>
-                                                <small class="text-muted">
-                                                    Prediction made using machine learning model
-                                                </small>
-                                            </div>
-                                        </div>
-                                    {% else %}
+                                    
                                         <div class="text-center py-5">
                                             <i class="fas fa-chart-line fa-3x text-muted mb-3"></i>
                                             <h5 class="text-muted">No Prediction Yet</h5>
                                             <p class="text-muted">Fill out the customer information form and click "Predict Churn" to see results.</p>
                                         </div>
-                                    {% endif %}
+                                    
                                 </div>
                             </div>
                         </div>
@@ -311,7 +255,7 @@
                                         </div>
 
                                         <!-- Submit Button -->
-                                        <button id="batchSubmitBtn" type="submit" class="btn btn-primary w-100" disabled {{ 'disabled' if not model_loaded else '' }}>
+                                        <button id="batchSubmitBtn" type="submit" class="btn btn-primary w-100" disabled >
                                             <i class="fas fa-magic me-2"></i>Process File & Predict
                                         </button>
                                     </form>
@@ -347,6 +291,6 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="/static/js/main.js"></script>
 </body>
 </html>

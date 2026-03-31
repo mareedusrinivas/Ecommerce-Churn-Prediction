@@ -1,0 +1,11 @@
+CreditScore,Geography,Gender,Age,Tenure,Balance,NumOfProducts,HasCrCard,IsActiveMember,EstimatedSalary,Decision_Tree_Prediction,Prediction_Confidence,Prediction_Probability
+619,France,Female,42,2,0.0,1,Yes,Yes,101348.88,Customer Stays,High,80.0
+608,Spain,Female,41,1,83807.86,1,No,Yes,112542.58,Customer Exits,Low,53.8
+502,France,Female,42,8,159660.8,3,Yes,No,113931.57,Customer Stays,High,85.7
+699,France,Female,39,1,0.0,2,No,No,93826.63,Customer Exits,Medium,66.7
+850,Germany,Female,43,2,125510.82,1,Yes,Yes,79084.1,Customer Stays,High,100.0
+645,Spain,Male,44,8,113755.78,2,Yes,No,149756.71,Customer Stays,High,85.7
+822,France,Male,50,7,0.0,2,Yes,Yes,10062.8,Customer Stays,Medium,60.0
+376,Germany,Female,29,4,115046.74,4,Yes,No,119346.88,Customer Stays,High,100.0
+501,France,Male,44,4,142051.07,2,Yes,Yes,74940.5,Customer Stays,High,100.0
+684,France,Male,27,2,134603.88,1,Yes,Yes,71725.73,Customer Stays,Medium,70.0
