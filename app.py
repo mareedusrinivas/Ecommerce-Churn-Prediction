@@ -18,9 +18,12 @@ CORS(app)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_development")
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-UPLOAD_FOLDER = 'uploads'
-DOWNLOAD_FOLDER = 'downloads'
-USER_DATA_FILE = 'users.json'
+# Vercel only allows writing to the /tmp directory
+is_vercel = os.environ.get("VERCEL", False)
+UPLOAD_FOLDER = '/tmp/uploads' if is_vercel else 'uploads'
+DOWNLOAD_FOLDER = '/tmp/downloads' if is_vercel else 'downloads'
+USER_DATA_FILE = '/tmp/users.json' if is_vercel else 'users.json'
+
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
