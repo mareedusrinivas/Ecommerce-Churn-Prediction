@@ -17,10 +17,12 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_development")
 
-# ─── Configuration ────────────────────────────────────────────────────────────
-UPLOAD_FOLDER = 'uploads'
-DOWNLOAD_FOLDER = 'downloads'
-USER_DATA_FILE = 'users.json'
+# ─── Configuration (Vercel-compatible paths) ──────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Writable folders on Vercel must be in /tmp
+UPLOAD_FOLDER = os.path.join('/tmp', 'uploads')
+DOWNLOAD_FOLDER = os.path.join('/tmp', 'downloads')
+USER_DATA_FILE = os.path.join('/tmp', 'users.json')
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
@@ -50,8 +52,10 @@ EXPECTED_COLUMNS = [
 
 # ─── Load Model ───────────────────────────────────────────────────────────────
 try:
-    dt_model = joblib.load('models/nate_decision_tree.sav')
-    logging.info("Ecommerce Decision Tree model loaded successfully.")
+    # Use absolute path for model file
+    model_path = os.path.join(BASE_DIR, 'models', 'nate_decision_tree.sav')
+    dt_model = joblib.load(model_path)
+    logging.info(f"Model loaded successfully from {model_path}")
     model_loaded = True
 except Exception as e:
     logging.error(f"Error loading model: {e}")
