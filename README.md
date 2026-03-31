@@ -1,6 +1,6 @@
-# 🛒 ShopChurn AI: Ecommerce Customer Retention Platform
+# 🛒 Ecommerce Churn Prediction: Customer Retention Platform
 
-ShopChurn AI is a powerful machine learning application designed to predict customer churn based on behavioral profiles. It features a Flask backend using Scikit-Learn and a modern, high-performance React frontend.
+Ecommerce Churn Prediction is a powerful machine learning application designed to predict customer churn based on behavioral profiles. It features a Flask backend using Scikit-Learn and a modern, high-performance React frontend.
 
 ---
 

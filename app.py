@@ -187,7 +187,7 @@ def home():
     """Simple API status or basic entry page."""
     return jsonify({
         'status': 'online',
-        'service': 'ShopChurn AI Backend',
+        'service': 'Ecommerce Churn Prediction Backend',
         'model_loaded': model_loaded,
         'endpoints': {
             'predict': '/predict_json [POST]',

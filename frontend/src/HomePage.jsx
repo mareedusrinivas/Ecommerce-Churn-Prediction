@@ -57,7 +57,7 @@ export default function HomePage({ onGetStarted }) {
       <nav className="nav">
         <div className="nav-brand">
           <div className="nav-logo">🛒</div>
-          <span className="nav-name">ShopChurn AI</span>
+          <span className="nav-name">Ecommerce Churn Prediction</span>
         </div>
         <ul className="nav-links">
           <li><a href="#features">Features</a></li>
@@ -82,7 +82,7 @@ export default function HomePage({ onGetStarted }) {
               <span className="highlight">Predict Churn Before It Happens.</span>
             </h1>
             <p className="hero-sub">
-              ShopChurn AI uses machine learning trained on real shopping behaviour to flag
+              Ecommerce Churn Prediction uses machine learning trained on real shopping behaviour to flag
               at-risk customers days before they leave — so your team can act first.
             </p>
             <div className="hero-actions">
@@ -277,7 +277,7 @@ export default function HomePage({ onGetStarted }) {
           <div className="footer-brand">
             <div className="footer-logo-row">
               <div className="footer-logo">🛒</div>
-              <span className="footer-brand-name">ShopChurn AI</span>
+              <span className="footer-brand-name">Ecommerce Churn Prediction</span>
             </div>
             <p className="footer-desc">
               Machine learning-powered customer retention intelligence, built specifically for ecommerce teams.
@@ -313,7 +313,7 @@ export default function HomePage({ onGetStarted }) {
         </div>
 
         <div className="footer-bottom">
-          <span>© 2026 ShopChurn AI. All rights reserved.</span>
+          <span>© 2026 Ecommerce Churn Prediction. All rights reserved.</span>
           <span>Powered by Scikit-learn · Flask · React</span>
         </div>
       </footer>

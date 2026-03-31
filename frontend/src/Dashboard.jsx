@@ -193,7 +193,7 @@ export default function Dashboard({ onBack }) {
         <button className="back-btn" onClick={onBack}>← Back to Home</button>
         <div style={{ display:'flex', alignItems:'center', gap:'.6rem' }}>
           <div style={{ width:32, height:32, background:'linear-gradient(135deg,#4ade80,#16a34a)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', fontSize:'1.1rem' }}>🛒</div>
-          <span style={{ fontWeight:700, color:'#111827' }}>ShopChurn AI</span>
+          <span style={{ fontWeight:700, color:'#111827' }}>Ecommerce Churn Prediction</span>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:'0.8rem', color:'#15803d', background:'#f0fdf4', border:'1px solid #bbf7d0', padding:'0.35rem 0.875rem', borderRadius:100 }}>
           <span style={{ width:7, height:7, borderRadius:'50%', background:'#22c55e', display:'inline-block' }} /> Model Active
