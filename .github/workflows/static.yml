@@ -44,7 +44,7 @@ jobs:
         working-directory: frontend
 
       - name: Build
-        run: npm run dev
+        run: npm run build
         working-directory: frontend
 
       - name: Setup Pages
