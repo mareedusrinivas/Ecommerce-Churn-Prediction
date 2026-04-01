@@ -19,19 +19,42 @@ app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_develo
 
 # ─── Configuration (Vercel-compatible paths) ──────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Writable folders on Vercel must be in /tmp
 UPLOAD_FOLDER = os.path.join('/tmp', 'uploads')
 DOWNLOAD_FOLDER = os.path.join('/tmp', 'downloads')
 USER_DATA_FILE = os.path.join('/tmp', 'users.json')
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+# Global state holders to be lazily initialized
+_state = {'model': None, 'loaded': False, 'init_done': False}
 
-if not os.path.exists(USER_DATA_FILE):
-    with open(USER_DATA_FILE, 'w') as f:
-        json.dump({}, f)
+def ensure_initialized():
+    """Lazily setup folders and load model on first use."""
+    if _state['init_done']:
+        return
+    
+    # 1. Setup Folders
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
+    if not os.path.exists(USER_DATA_FILE):
+        with open(USER_DATA_FILE, 'w') as f:
+            json.dump({}, f)
+    
+    # 2. Load Model
+    try:
+        model_path = os.path.join(BASE_DIR, 'models', 'nate_decision_tree.sav')
+        _state['model'] = joblib.load(model_path)
+        _state['loaded'] = True
+        logging.info(f"Lazy-loaded model from {model_path}")
+    except Exception as e:
+        logging.error(f"Lazy loading failed: {e}")
+        _state['loaded'] = False
+        
+    _state['init_done'] = True
+
+@app.before_request
+def setup_on_first_run():
+    ensure_initialized()
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
@@ -39,28 +62,9 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # ─── Ecommerce Feature Columns (must match model training order) ──────────────
 EXPECTED_COLUMNS = [
-    'Age',
-    'Gender',
-    'AnnualIncome',
-    'SpendingScore',
-    'TenureMonths',
-    'NumOrders',
-    'AvgOrderValue',
-    'LastLoginDaysAgo',
-    'IsActiveMember',
+    'Age', 'Gender', 'AnnualIncome', 'SpendingScore', 'TenureMonths',
+    'NumOrders', 'AvgOrderValue', 'LastLoginDaysAgo', 'IsActiveMember',
 ]
-
-# ─── Load Model ───────────────────────────────────────────────────────────────
-try:
-    # Use absolute path for model file
-    model_path = os.path.join(BASE_DIR, 'models', 'nate_decision_tree.sav')
-    dt_model = joblib.load(model_path)
-    logging.info(f"Model loaded successfully from {model_path}")
-    model_loaded = True
-except Exception as e:
-    logging.error(f"Error loading model: {e}")
-    dt_model = None
-    model_loaded = False
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -209,7 +213,7 @@ def home():
     return jsonify({
         'status': 'online',
         'service': 'Ecommerce Churn Prediction Backend',
-        'model_loaded': model_loaded,
+        'model_loaded': _state['loaded'],
         'endpoints': {
             'predict': '/predict_json [POST]',
             'batch': '/batch_predict_json [POST]',
@@ -268,7 +272,7 @@ def check_auth():
 def predict():
     """Single record ecommerce churn prediction."""
     try:
-        if not model_loaded:
+        if not _state['loaded']:
             flash('Model is not available. Please check model files.', 'error')
             return redirect(url_for('home'))
 
@@ -290,11 +294,11 @@ def predict():
         device_map = {'0': 'Mobile', '1': 'Desktop', '2': 'Tablet'}
         custd['DeviceType'] = device_map.get(custd.get('DeviceType', '0'), 'Mobile')
 
-        prediction = dt_model.predict(new_array)[0]
+        prediction = _state['model'].predict(new_array)[0]
         prediction_text = decode(prediction)
 
         try:
-            proba = dt_model.predict_proba(new_array)[0]
+            proba = _state['model'].predict_proba(new_array)[0]
             confidence = get_confidence(proba)
             probability = round(max(proba) * 100, 1)
         except Exception:
@@ -309,7 +313,7 @@ def predict():
         }
 
         flash('Prediction completed successfully!', 'success')
-        return render_template('index.html', result=result, model_loaded=model_loaded)
+        return render_template('index.html', result=result, model_loaded=_state['loaded'])
 
     except Exception as e:
         logging.error(f"Single prediction error: {e}")
@@ -321,7 +325,7 @@ def predict():
 def predict_json():
     """JSON API endpoint for React frontend single prediction."""
     try:
-        if not model_loaded:
+        if not _state['loaded']:
             return jsonify({'error': 'Model not loaded'}), 503
 
         data = request.get_json()
@@ -331,11 +335,11 @@ def predict_json():
         row = [float(data.get(col, 0)) for col in EXPECTED_COLUMNS]
         new_array = np.array(row, dtype=float).reshape(1, -1)
 
-        prediction = dt_model.predict(new_array)[0]
+        prediction = _state['model'].predict(new_array)[0]
         prediction_text = decode(prediction)
 
         try:
-            proba = dt_model.predict_proba(new_array)[0]
+            proba = _state['model'].predict_proba(new_array)[0]
             confidence = get_confidence(proba)
             probability = round(max(proba) * 100, 1)
         except Exception:
@@ -358,7 +362,7 @@ def predict_json():
 def batch_predict_json():
     """Batch prediction returning full JSON for React graphical dashboard."""
     try:
-        if not model_loaded:
+        if not _state['loaded']:
             return jsonify({'error': 'Model not loaded'}), 503
 
         if 'excel_file' not in request.files:
@@ -387,8 +391,8 @@ def batch_predict_json():
             return jsonify({'error': '; '.join(errors)}), 400
 
         processed = preprocess_data(df)
-        predictions = dt_model.predict(processed)
-        probas = dt_model.predict_proba(processed)
+        predictions = _state['model'].predict(processed)
+        probas = _state['model'].predict_proba(processed)
 
         # Build per-row results
         rows = []
