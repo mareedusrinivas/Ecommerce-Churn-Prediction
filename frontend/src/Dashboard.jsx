@@ -5,20 +5,26 @@ const API = import.meta.env.VITE_API_URL || 'http://127.0.0.1:5000';
 
 /* ── Field config ───────────────────────────────────────────────── */
 const FIELDS = [
-  { key: 'Age',              label: 'Age',                   type: 'number', min: 18, max: 100 },
-  { key: 'Gender',           label: 'Gender',                type: 'select', options: [['0','👨 Male'],['1','👩 Female']] },
-  { key: 'AnnualIncome',     label: 'Annual Income ($)',     type: 'number', min: 0, max: 1000000 },
-  { key: 'SpendingScore',    label: 'Spending Score (1-100)', type: 'number', min: 1, max: 100 },
-  { key: 'TenureMonths',     label: 'Tenure (Months)',        type: 'number', min: 0, max: 600 },
-  { key: 'NumOrders',        label: 'Total Orders',          type: 'number', min: 0, max: 1000 },
-  { key: 'AvgOrderValue',    label: 'Avg Order Value ($)',    type: 'number', min: 0, max: 10000, step: '0.01' },
-  { key: 'LastLoginDaysAgo', label: 'Last Login (Days Ago)',  type: 'number', min: 0, max: 365 },
+  { key: 'Age',               label: 'Age',                   type: 'number', min: 18, max: 100 },
+  { key: 'Gender',            label: 'Gender',                type: 'select', options: [['0','👨 Male'],['1','👩 Female']] },
+  { key: 'Tenure',            label: 'Tenure (Months)',        type: 'number', min: 1, max: 60 },
+  { key: 'Usage Frequency',   label: 'Usage (per Month)',     type: 'number', min: 1, max: 30 },
+  { key: 'Support Calls',     label: 'Support Calls',         type: 'number', min: 0, max: 10 },
+  { key: 'Payment Delay',     label: 'Payment Delay (Days)',   type: 'number', min: 0, max: 30 },
+  { key: 'Subscription Type', label: 'Subscription',          type: 'select', options: [['0','Basic'],['1','Standard'],['2','Premium']] },
+  { key: 'Contract Length',   label: 'Contract',              type: 'select', options: [['0','Monthly'],['1','Quarterly'],['2','Annual']] },
+  { key: 'Total Spend',       label: 'Total Spend ($)',       type: 'number', min: 100, max: 10000, step: '0.01' },
+  { key: 'Last Interaction',  label: 'Last Interaction (Days)', type: 'number', min: 0, max: 30 },
+  { key: 'AnnualIncome',     label: 'Annual Income ($)',     type: 'number', min: 20000, max: 150000 },
+  { key: 'NumOrders',        label: 'Total Orders',          type: 'number', min: 1, max: 50 },
+  { key: 'LastLoginDaysAgo', label: 'Last Login (Days Ago)',  type: 'number', min: 0, max: 60 },
 ];
 
 const DEFAULT = {
-  Age: 30, Gender: '1', AnnualIncome: 50000, SpendingScore: 50,
-  TenureMonths: 12, NumOrders: 5, AvgOrderValue: 75.00,
-  LastLoginDaysAgo: 5, IsActiveMember: true,
+  Age: 30, Gender: '1', Tenure: 12, 'Usage Frequency': 10,
+  'Support Calls': 2, 'Payment Delay': 0, 'Subscription Type': '1',
+  'Contract Length': '1', 'Total Spend': 500.00, 'Last Interaction': 5,
+  AnnualIncome: 50000, NumOrders: 5, LastLoginDaysAgo: 5
 };
 
 /* ── Mini SVG Donut ─────────────────────────────────────────────── */
@@ -110,7 +116,8 @@ export default function Dashboard({ onBack, onLogout, username }) {
       const payload = { 
         ...form, 
         Gender: parseInt(form.Gender),
-        IsActiveMember: form.IsActiveMember ? 1 : 0 
+        'Subscription Type': parseInt(form['Subscription Type']),
+        'Contract Length': parseInt(form['Contract Length']),
       };
       const res = await fetch(`${API}/predict_json`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -172,11 +179,11 @@ export default function Dashboard({ onBack, onLogout, username }) {
   /* ── Download results as CSV ── */
   const downloadCSV = () => {
     if (!batchResult) return;
-    const headers = ['CustomerID', 'Prediction', 'Churns', 'Churn Probability %', 'Confidence',
-      'Age', 'Gender', 'Annual Income', 'Spending Score', 'Tenure Months', 'Num Orders', 'Avg Order Value', 'Last Login', 'Active Member'];
+    const headers = ['CustomerID', 'Churn_Prediction', 'Churns', 'Churn_Probability_%', 'Prediction_Confidence',
+      'Age', 'Gender', 'Tenure', 'Usage Frequency', 'Support Calls', 'Payment Delay', 'Subscription Type', 'Contract Length', 'Total Spend', 'Last Interaction', 'AnnualIncome', 'NumOrders', 'LastLoginDaysAgo'];
     const rows = batchResult.rows.map(r =>
       [r.customerID, r.prediction, r.churns ? 'Yes' : 'No', r.probability, r.confidence,
-       r.age, r.gender === 1 ? 'Female' : 'Male', r.annualIncome, r.spendingScore, r.tenureMonths, r.numOrders, r.avgOrderValue, r.lastLoginDaysAgo, r.isActiveMember ? 'Yes' : 'No']
+       r.age, r.gender === 1 ? 'Female' : 'Male', r.tenure, r.usage, r.support, r.paymentDelay, r.subscriptionType, r.contractLength, r.totalSpend, r.lastInteraction, r.annualIncome, r.numOrders, r.lastLogin]
     );
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const a = document.createElement('a');
@@ -238,13 +245,7 @@ export default function Dashboard({ onBack, onLogout, username }) {
                     </div>
                   ))}
                 </div>
-                <div className="f-toggle-row">
-                  <label className="f-toggle">
-                    <input type="checkbox" checked={form.IsActiveMember} onChange={e=>update('IsActiveMember',e.target.checked)} />
-                    Currently Active Member
-                  </label>
-                </div>
-                <button className="btn-predict" type="submit" disabled={singleLoading}>
+                <button className="btn-predict" style={{ marginTop: '1.25rem' }} type="submit" disabled={singleLoading}>
                   {singleLoading ? <><span className="spin">⟳</span> Analysing…</> : <>⚡ Run Churn Analysis</>}
                 </button>
               </form>

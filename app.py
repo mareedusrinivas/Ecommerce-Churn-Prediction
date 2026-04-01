@@ -17,44 +17,19 @@ app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get("SESSION_SECRET", "default_secret_key_for_development")
 
-# ─── Configuration (Vercel-compatible paths) ──────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join('/tmp', 'uploads')
-DOWNLOAD_FOLDER = os.path.join('/tmp', 'downloads')
-USER_DATA_FILE = os.path.join('/tmp', 'users.json')
+# ─── Configuration ────────────────────────────────────────────────────────────
+UPLOAD_FOLDER = 'uploads'
+DOWNLOAD_FOLDER = 'downloads'
+USER_DATA_FILE = 'users.json'
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 MAX_FILE_SIZE = 16 * 1024 * 1024  # 16 MB
 
-# Global state holders to be lazily initialized
-_state = {'model': None, 'loaded': False, 'init_done': False}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
 
-def ensure_initialized():
-    """Lazily setup folders and load model on first use."""
-    if _state['init_done']:
-        return
-    
-    # 1. Setup Folders
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    os.makedirs(DOWNLOAD_FOLDER, exist_ok=True)
-    if not os.path.exists(USER_DATA_FILE):
-        with open(USER_DATA_FILE, 'w') as f:
-            json.dump({}, f)
-    
-    # 2. Load Model
-    try:
-        model_path = os.path.join(BASE_DIR, 'models', 'nate_decision_tree.sav')
-        _state['model'] = joblib.load(model_path)
-        _state['loaded'] = True
-        logging.info(f"Lazy-loaded model from {model_path}")
-    except Exception as e:
-        logging.error(f"Lazy loading failed: {e}")
-        _state['loaded'] = False
-        
-    _state['init_done'] = True
-
-@app.before_request
-def setup_on_first_run():
-    ensure_initialized()
+if not os.path.exists(USER_DATA_FILE):
+    with open(USER_DATA_FILE, 'w') as f:
+        json.dump({}, f)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['DOWNLOAD_FOLDER'] = DOWNLOAD_FOLDER
@@ -62,9 +37,30 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
 
 # ─── Ecommerce Feature Columns (must match model training order) ──────────────
 EXPECTED_COLUMNS = [
-    'Age', 'Gender', 'AnnualIncome', 'SpendingScore', 'TenureMonths',
-    'NumOrders', 'AvgOrderValue', 'LastLoginDaysAgo', 'IsActiveMember',
+    'Age',
+    'Gender',
+    'Tenure',
+    'Usage Frequency',
+    'Support Calls',
+    'Payment Delay',
+    'Subscription Type',
+    'Contract Length',
+    'Total Spend',
+    'Last Interaction',
+    'AnnualIncome',
+    'NumOrders',
+    'LastLoginDaysAgo',
 ]
+
+# ─── Load Model ───────────────────────────────────────────────────────────────
+try:
+    dt_model = joblib.load('models/nate_decision_tree.sav')
+    logging.info("Ecommerce Decision Tree model loaded successfully.")
+    model_loaded = True
+except Exception as e:
+    logging.error(f"Error loading model: {e}")
+    dt_model = None
+    model_loaded = False
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -87,32 +83,41 @@ def get_confidence(pred_proba):
 
 def validate_data(df):
     errors = []
-    missing = set(EXPECTED_COLUMNS) - set(df.columns)
+    # Normalize expected and actual columns to ignore spaces, underscores, and case
+    norm_expected = [c.replace(' ', '').replace('_', '').lower() for c in EXPECTED_COLUMNS]
+    norm_actual = [str(c).replace(' ', '').replace('_', '').lower() for c in df.columns]
+    
+    missing = []
+    for i, exp in enumerate(norm_expected):
+        if exp not in norm_actual:
+            missing.append(EXPECTED_COLUMNS[i])
+
     if missing:
         errors.append(f"Missing columns: {', '.join(missing)}")
     if df.empty:
         errors.append("File is empty.")
 
-    try:
-        if 'SatisfactionScore' in df.columns:
-            if not df['SatisfactionScore'].between(1, 5).all():
-                errors.append("SatisfactionScore must be between 1 and 5.")
-        if 'CartAbandonmentRate' in df.columns:
-            if not df['CartAbandonmentRate'].between(0, 100).all():
-                errors.append("CartAbandonmentRate must be between 0 and 100.")
-        if 'DeviceType' in df.columns:
-            if not df['DeviceType'].isin([0, 1, 2]).all():
-                errors.append("DeviceType must be 0 (Mobile), 1 (Desktop), or 2 (Tablet).")
-    except Exception as e:
-        errors.append(f"Validation error: {str(e)}")
     return errors
 
 
 def preprocess_data(df):
     try:
-        processed = df.copy()[EXPECTED_COLUMNS]
-        for col in processed.columns:
-            processed[col] = pd.to_numeric(processed[col], errors='coerce')
+        # Build normalized column mapping for flexible matching
+        norm_map = {str(c).replace(' ', '').replace('_', '').lower(): c for c in df.columns}
+        
+        # Build DataFrame with correct column order for model
+        processed_data = []
+        for exp in EXPECTED_COLUMNS:
+            norm_exp = exp.replace(' ', '').replace('_', '').lower()
+            orig_col = norm_map.get(norm_exp)
+            if orig_col:
+                processed_data.append(pd.to_numeric(df[orig_col], errors='coerce'))
+            else:
+                # If optional but missing, fallback to 0
+                processed_data.append(pd.Series([0] * len(df)))
+                
+        processed = pd.concat(processed_data, axis=1)
+        processed.columns = EXPECTED_COLUMNS
         processed = processed.fillna(0)
         return processed.astype(float).values
     except Exception as e:
@@ -213,7 +218,7 @@ def home():
     return jsonify({
         'status': 'online',
         'service': 'Ecommerce Churn Prediction Backend',
-        'model_loaded': _state['loaded'],
+        'model_loaded': model_loaded,
         'endpoints': {
             'predict': '/predict_json [POST]',
             'batch': '/batch_predict_json [POST]',
@@ -272,7 +277,7 @@ def check_auth():
 def predict():
     """Single record ecommerce churn prediction."""
     try:
-        if not _state['loaded']:
+        if not model_loaded:
             flash('Model is not available. Please check model files.', 'error')
             return redirect(url_for('home'))
 
@@ -294,11 +299,11 @@ def predict():
         device_map = {'0': 'Mobile', '1': 'Desktop', '2': 'Tablet'}
         custd['DeviceType'] = device_map.get(custd.get('DeviceType', '0'), 'Mobile')
 
-        prediction = _state['model'].predict(new_array)[0]
+        prediction = dt_model.predict(new_array)[0]
         prediction_text = decode(prediction)
 
         try:
-            proba = _state['model'].predict_proba(new_array)[0]
+            proba = dt_model.predict_proba(new_array)[0]
             confidence = get_confidence(proba)
             probability = round(max(proba) * 100, 1)
         except Exception:
@@ -313,7 +318,7 @@ def predict():
         }
 
         flash('Prediction completed successfully!', 'success')
-        return render_template('index.html', result=result, model_loaded=_state['loaded'])
+        return render_template('index.html', result=result, model_loaded=model_loaded)
 
     except Exception as e:
         logging.error(f"Single prediction error: {e}")
@@ -325,7 +330,7 @@ def predict():
 def predict_json():
     """JSON API endpoint for React frontend single prediction."""
     try:
-        if not _state['loaded']:
+        if not model_loaded:
             return jsonify({'error': 'Model not loaded'}), 503
 
         data = request.get_json()
@@ -335,16 +340,21 @@ def predict_json():
         row = [float(data.get(col, 0)) for col in EXPECTED_COLUMNS]
         new_array = np.array(row, dtype=float).reshape(1, -1)
 
-        prediction = _state['model'].predict(new_array)[0]
-        prediction_text = decode(prediction)
-
+        global dt_model
         try:
-            proba = _state['model'].predict_proba(new_array)[0]
-            confidence = get_confidence(proba)
-            probability = round(max(proba) * 100, 1)
-        except Exception:
-            confidence = "Unknown"
-            probability = 0.0
+            prediction = dt_model.predict(new_array)[0]
+            proba = dt_model.predict_proba(new_array)[0]
+        except ValueError as ve:
+            if "expecting" in str(ve) or "features" in str(ve):
+                logging.warning("Model mismatch! Reloading model...")
+                dt_model = joblib.load('models/nate_decision_tree.sav')
+                prediction = dt_model.predict(new_array)[0]
+                proba = dt_model.predict_proba(new_array)[0]
+            else: raise ve
+
+        prediction_text = decode(prediction)
+        confidence = get_confidence(proba)
+        probability = round(max(proba) * 100, 1)
 
         return jsonify({
             'prediction': prediction_text,
@@ -362,7 +372,7 @@ def predict_json():
 def batch_predict_json():
     """Batch prediction returning full JSON for React graphical dashboard."""
     try:
-        if not _state['loaded']:
+        if not model_loaded:
             return jsonify({'error': 'Model not loaded'}), 503
 
         if 'excel_file' not in request.files:
@@ -391,8 +401,19 @@ def batch_predict_json():
             return jsonify({'error': '; '.join(errors)}), 400
 
         processed = preprocess_data(df)
-        predictions = _state['model'].predict(processed)
-        probas = _state['model'].predict_proba(processed)
+        
+        # Self-healing reload if feature mismatch
+        global dt_model
+        try:
+            predictions = dt_model.predict(processed)
+            probas = dt_model.predict_proba(processed)
+        except ValueError as ve:
+            if "expecting" in str(ve) or "features" in str(ve):
+                logging.warning("Batch model mismatch! Hot-reloading...")
+                dt_model = joblib.load('models/nate_decision_tree.sav')
+                predictions = dt_model.predict(processed)
+                probas = dt_model.predict_proba(processed)
+            else: raise ve
 
         # Build per-row results
         rows = []
@@ -406,11 +427,11 @@ def batch_predict_json():
                 'probability': round(float(proba[1]) * 100, 1),
                 'confidence': get_confidence(proba),
                 'age': int(df.iloc[i].get('Age', 0)),
+                'tenure': int(df.iloc[i].get('Tenure', 0)),
+                'totalSpend': float(df.iloc[i].get('Total Spend', 0)),
                 'annualIncome': float(df.iloc[i].get('AnnualIncome', 0)),
-                'spendingScore': float(df.iloc[i].get('SpendingScore', 0)),
-                'tenureMonths': int(df.iloc[i].get('TenureMonths', 0)),
                 'numOrders': int(df.iloc[i].get('NumOrders', 0)),
-                'isActiveMember': int(df.iloc[i].get('IsActiveMember', 0)),
+                'lastLogin': int(df.iloc[i].get('LastLoginDaysAgo', 0)),
             })
 
         total = len(rows)
@@ -440,18 +461,18 @@ def batch_predict_json():
             return round(sum(r[key] for r in lst) / len(lst), 1) if lst else 0
 
         feature_comparison = {
-            'labels': ['Spending Score', 'Tenure (Mo)', 'Num Orders', 'Active %'],
+            'labels': ['Income', 'Orders', 'Login (Days)', 'Spend'],
             'churned': [
-                avg(churn_rows, 'spendingScore'),
-                avg(churn_rows, 'tenureMonths'),
+                avg(churn_rows, 'annualIncome'),
                 avg(churn_rows, 'numOrders'),
-                avg(churn_rows, 'isActiveMember') * 100,
+                avg(churn_rows, 'lastLogin'),
+                avg(churn_rows, 'totalSpend'),
             ],
             'stayed': [
-                avg(stay_rows, 'spendingScore'),
-                avg(stay_rows, 'tenureMonths'),
+                avg(stay_rows, 'annualIncome'),
                 avg(stay_rows, 'numOrders'),
-                avg(stay_rows, 'isActiveMember') * 100,
+                avg(stay_rows, 'lastLogin'),
+                avg(stay_rows, 'totalSpend'),
             ],
         }
 
