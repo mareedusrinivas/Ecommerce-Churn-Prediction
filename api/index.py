@@ -1,5 +1,10 @@
-from app import app
+import os
+import sys
 
-# Vercel needs the 'app' variable at the module level
-# This enables the serverless function to find your Flask entry point
+# Add root directory to path so we can import app.py and other modules
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT_DIR not in sys.path:
+    sys.path.append(ROOT_DIR)
+
+from app import app
 application = app
