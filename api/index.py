@@ -1,12 +1,12 @@
-import os
-import sys
-
-# Add root directory to path so we can import app.py and other modules
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT_DIR not in sys.path:
-    sys.path.append(ROOT_DIR)
+# Vercel Serverless Function Bridge
+# This file connects Vercel's entry point to your Flask application
 
 try:
+    # Everything is now inside the api/ folder for reliable Vercel bundling
+    from .app import app
+    application = app
+except ImportError:
+    # Normal import if running locally
     from app import app
     application = app
 except Exception as e:
@@ -16,7 +16,7 @@ except Exception as e:
     @application.route('/api/')
     def error_route(path=None):
         return jsonify({
-            "error": "Backend Initialization Failed",
+            "error": "Mono-repo Initialization Failed",
             "message": str(e),
-            "hint": "Check if all dependencies are in requirements.txt and models exist."
+            "hint": "Ensure app.py and models/ are correctly structured within the api/ directory."
         }), 500
