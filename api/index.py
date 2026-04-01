@@ -6,5 +6,17 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.append(ROOT_DIR)
 
-from app import app
-application = app
+try:
+    from app import app
+    application = app
+except Exception as e:
+    from flask import Flask, jsonify
+    application = Flask(__name__)
+    @application.route('/api/<path:path>')
+    @application.route('/api/')
+    def error_route(path=None):
+        return jsonify({
+            "error": "Backend Initialization Failed",
+            "message": str(e),
+            "hint": "Check if all dependencies are in requirements.txt and models exist."
+        }), 500
